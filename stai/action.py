@@ -6,6 +6,7 @@ class ActionType(Enum):
     BUY = 1  # 买入
     SELL = 2  # 卖出
     CONTINUE_BUY = 3  # 开始继续买入（目的是为了监控卖出效果的好坏，如果不这么做，卖出行为将只有短期反馈）
+    FORCE_STOP = 4  # 不使用模型，手动平仓
 
 
 class BaseAction(object):

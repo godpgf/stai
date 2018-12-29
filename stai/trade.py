@@ -69,7 +69,6 @@ class FrameTrade(object):
                     cnt += 1
         return sum / cnt
 
-
     def create_reward(self, trade_seq, deposit=0.8):
         for i in range(len(trade_seq)-1, -1, -1):
             if i % 2 == 0:
@@ -85,17 +84,25 @@ class FrameTrade(object):
                         # 拒绝再买入也是一种短期指标，不用看得太远。需要看拒绝后的下跌作为远期奖励，再远就不看了
                         self._create_sell_reward(i, trade_seq, deposit)
                 elif trade_seq[i].act_type == ActionType.SELL:
-                    if trade_seq[i].model_reward > 0:
+                    if i + 3 == len(trade_seq) and trade_seq[-1].act_type == ActionType.FORCE_STOP:
+                        # 卖出发现早了
+                        self._create_sell_reward(i, trade_seq, deposit)
+                    elif trade_seq[i].model_reward > 0:
                         # 卖出时需要看到再买入的跌幅作为远期奖励，当前跌幅作为近期奖励（和拒绝再买入一样）
                         self._create_sell_reward(i, trade_seq, deposit)
                     else:
                         self._create_buy_reward(i, trade_seq, deposit)
-                else:
-                    if trade_seq[i].model_reward > 0:
+                elif trade_seq[i].act_type == ActionType.BUY:
+                    if i + 3 == len(trade_seq) and trade_seq[-1].act_type == ActionType.FORCE_STOP:
+                        # 买早了
+                        self._create_buy_reward(i, trade_seq, deposit)
+                    elif trade_seq[i].model_reward > 0:
                         self._create_buy_reward(i, trade_seq, deposit)
                     else:
                         # 拒绝买入的奖励相当于卖出的奖励，通过后续的再买入行为去评估好坏
                         self._create_sell_reward(i, trade_seq, deposit)
+                # else:
+                    # 手动操作，不需要奖励去训练模型
 
     def _create_sell_reward(self, seq_index, trade_seq, deposit):
         start_frame_index = trade_seq[seq_index].frame_index
@@ -108,12 +115,14 @@ class FrameTrade(object):
 
     def _create_buy_reward(self, seq_index, trade_seq, deposit):
         start_frame_index = trade_seq[seq_index].frame_index
-        # 找到卖出序列
+        # 找到卖出序列或止损序列
         while True:
             end_seq_index = seq_index + 1
             if end_seq_index >= len(trade_seq):
                 return
             if trade_seq[end_seq_index].act_type == ActionType.SELL and trade_seq[end_seq_index].model_reward > 0:
+                break
+            if trade_seq[end_seq_index].act_type == ActionType.FORCE_STOP:
                 break
         end_frame_index = trade_seq[end_seq_index].frame_index
         far_reward = self.frame_db.get_delta_reward(start_frame_index, end_frame_index)
@@ -177,12 +186,18 @@ class FrameTrade(object):
             # 预测不可以买入，为了知道预测是否准确，还是需要产生一个continue buy行为，以便评估不买入决策的好坏
             self._create_pre_continue_buy(epsilon, trade_seq)
 
-
     # 创建准备卖出行为
     def _create_pre_sell(self, epsilon, trade_seq):
-        frame_index = self.frame_db.get_next_frame_index(trade_seq[-1].frame_index, [stf.FrameType.top.value, stf.FrameType.top_delay.value, stf.FrameType.go_down.value])
+        frame_index = self.frame_db.get_next_frame_index(trade_seq[-1].frame_index, [stf.FrameType.top.value, stf.FrameType.top_delay.value, stf.FrameType.go_down.value, stf.FrameType.force_stop.value])
         if frame_index is None:
             return
+
+        if self.frame_db.get_frame_type(frame_index) == stf.FrameType.force_stop.value:
+            # 发现之前的买入行为错了，需要立即纠正-----------------------------------------------------
+            trade_seq.append(PreAction(ActionType.FORCE_STOP, frame_index, 0))
+            trade_seq.append(RealAction(ActionType.FORCE_STOP, frame_index, 0))
+            return
+
         if random.random() < epsilon:
             model_index = random.randint(0, self.frame_model.pre_sell_model_num-1)
         else:
@@ -190,12 +205,18 @@ class FrameTrade(object):
         trade_seq.append(PreAction(ActionType.SELL, frame_index, model_index))
         self._create_sell(epsilon, trade_seq)
 
-
     # 创建继续买入行为（继续买入只是假装买入，不会真正买。目的是观察之前的卖出行为是否明智）
     def _create_pre_continue_buy(self, epsilon, trade_seq):
-        frame_index = self.frame_db.get_next_frame_index(trade_seq[-1].frame_index, [stf.FrameType.bottom.value, stf.FrameType.bottom_delay.value, stf.FrameType.go_up.value])
+        frame_index = self.frame_db.get_next_frame_index(trade_seq[-1].frame_index, [stf.FrameType.bottom.value, stf.FrameType.bottom_delay.value, stf.FrameType.go_up.value, stf.FrameType.force_stop.value])
         if frame_index is None:
             return
+
+        if self.frame_db.get_frame_type(frame_index) == stf.FrameType.force_stop.value:
+            # 发现之前的行为错了，需要立即纠正-----------------------------------------------------------
+            trade_seq.append(PreAction(ActionType.FORCE_STOP, frame_index, 0))
+            trade_seq.append(RealAction(ActionType.FORCE_STOP, frame_index, 0))
+            return
+
         if random.random() < epsilon:
             model_index = random.randint(0, self.frame_model.pre_buy_model_num-1)
         else:
