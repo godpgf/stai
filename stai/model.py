@@ -11,10 +11,10 @@ class FrameModelData(object):
 
 
 class FrameModel(object):
-    def __init__(self, buy_model_num, sell_model_num, continue_buy_model):
+    def __init__(self, buy_model_num, sell_model_num, continue_buy_model_num):
         self.buy_model_num = buy_model_num
         self.sell_model_num = sell_model_num
-        self.continue_buy_model = continue_buy_model
+        self.continue_buy_model_num = continue_buy_model_num
 
     # 找到最适合frame_index的预购买模型(frame_feature中包含了买入行为发生在底分型停顿还是后续的追涨)
     def get_best_pre_buy_model_index(self, frame_feature):
@@ -41,19 +41,19 @@ class FrameModel(object):
     def pred_pre_buy_reward(self, frame_feature, model_index):
         return 0
 
-    def pred_buy_reward(self, frame_feature):
+    def pred_buy_reward(self, frame_feature, model_index):
         return 0
 
     def pred_pre_sell_reward(self, frame_feature, model_index):
         return 0
 
-    def pred_sell_reward(self, frame_feature):
+    def pred_sell_reward(self, frame_feature, model_index):
         return 0
 
-    def pred_pre_continue_buy_reward(self, frame_index, model_index):
+    def pred_pre_continue_buy_reward(self, frame_feature, model_index):
         return 0
 
-    def pred_continue_buy_reward(self, frame_feature):
+    def pred_continue_buy_reward(self, frame_feature, model_index):
         return 0
 
     def train_pre_buy_model(self, frame_model_data):
@@ -74,8 +74,8 @@ class FrameModel(object):
     def train_continue_buy_model(self, frame_model_data):
         pass
 
-    def save(self, path):
+    def save(self, path="save/model.ckpt"):
         pass
 
-    def load(self, path):
+    def load(self, path="save/model.ckpt"):
         pass

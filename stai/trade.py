@@ -117,7 +117,7 @@ class FrameTrade(object):
         start_frame_index = trade_seq[seq_index].frame_index
         # 找到卖出序列或止损序列
         while True:
-            end_seq_index = seq_index + 1
+            end_seq_index = seq_index + 2
             if end_seq_index >= len(trade_seq):
                 return
             if trade_seq[end_seq_index].act_type == ActionType.SELL and trade_seq[end_seq_index].model_reward > 0:
@@ -173,7 +173,7 @@ class FrameTrade(object):
 
     # 创建买入行为
     def _create_buy(self, epsilon, trade_seq):
-        reward = self.frame_model.pred_buy_reward(self.frame_db.get_feature(trade_seq[-1].frame_index))
+        reward = self.frame_model.pred_buy_reward(self.frame_db.get_feature(trade_seq[-1].frame_index), trade_seq[-1].model_index)
         if random.random() < epsilon:
             # reward大于0决定真实买入，有一定概率会反着来，以便试错
             reward = -reward
@@ -226,7 +226,7 @@ class FrameTrade(object):
 
     # 创建卖出行为
     def _create_sell(self, epsilon, trade_seq):
-        reward = self.frame_model.pred_sell_reward(self.frame_db.get_feature(trade_seq[-1].frame_index))
+        reward = self.frame_model.pred_sell_reward(self.frame_db.get_feature(trade_seq[-1].frame_index), trade_seq[-1].model_index)
         if random.random() < epsilon:
             # reward大于0决定真实买入，有一定概率会反着来，以便试错
             reward = -reward
@@ -242,13 +242,9 @@ class FrameTrade(object):
             self._create_pre_sell(epsilon, trade_seq)
 
     def _create_continue_buy(self, epsilon, trade_seq):
-        reward = self.frame_model.pred_continue_buy_reward(self.frame_db.get_feature(trade_seq[-1].frame_index))
+        reward = self.frame_model.pred_continue_buy_reward(self.frame_db.get_feature(trade_seq[-1].frame_index), trade_seq[-1].model_index)
         if random.random() < epsilon:
             # reward大于0决定真实买入，有一定概率会反着来，以便试错
             reward = -reward
-        trade_seq.append(RealAction(ActionType.BUY, trade_seq[-1].frame_index, model_reward=reward))
-
-        if reward > 0:
-            # 预测不可以买入，为了知道预测是否准确，还是需要产生一个continue buy行为，以便评估不买入决策的好坏
-            self._create_pre_continue_buy(epsilon, trade_seq)
+        trade_seq.append(RealAction(ActionType.CONTINUE_BUY, trade_seq[-1].frame_index, model_reward=reward))
 

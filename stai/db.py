@@ -4,11 +4,13 @@ import numpy as np
 
 
 class FrameDB(object):
-    def __init__(self, df_frame, offset):
+    def __init__(self, df_frame, offset, df_buy, df_sell):
         self.df_frame = df_frame
         self.offset = offset
+        self.df_buy = df_buy
+        self.df_sell = df_sell
         self.month_2_frame_index = self._get_month_2_frame_index(df_frame)
-        self.month_2_buy_frame_index = {key: self._filter_buy_frame_index(value, df_frame) for key, value in self.month_2_frame_index}
+        self.month_2_buy_frame_index = {key: self._filter_buy_frame_index(value) for key, value in self.month_2_frame_index.items()}
         self.trade_month = np.unique(df_frame["date"].values // 100)
 
     # 得到某个月可以买入的所有帧
@@ -19,7 +21,12 @@ class FrameDB(object):
 
     # 得到某帧的特征
     def get_feature(self, frame_index):
-        # todo
+        if self._can_buy(frame_index):
+            return self.df_buy.loc[frame_index]
+        elif self._can_sell(frame_index):
+            return self.df_sell.loc[frame_index]
+        else:
+            raise Exception("no no no!")
         return None
 
     def get_frame_type(self, frame_index):
@@ -65,11 +72,11 @@ class FrameDB(object):
     def _get_month_2_frame_index(cls, df_frame):
         month_2_frame_index = {}
         for frame_index, row in df_frame.iterrows():
-            month = row["date"] // 100
+            month = int(row["date"] // 100)
             if month not in month_2_frame_index:
-                month_2_frame_index[month] = [frame_index]
+                month_2_frame_index[month] = [int(frame_index)]
             else:
-                month_2_frame_index[month].append(frame_index)
+                month_2_frame_index[month].append(int(frame_index))
         return month_2_frame_index
 
 
@@ -79,16 +86,35 @@ class FrameDB(object):
         can_buy_frame_index_list = []
         for frame_index in frame_index_list:
             if pd.isna(df_frame['next_replace_frame'].loc[frame_index]) or int(df_frame['next_replace_frame'].loc[frame_index]) > frame_index:
-                # 这是一个有效的帧
-                frame_type = self.get_frame_type(frame_index)
-                # 规定只有底分型、底分型停顿或者追涨这三种情况可以买入，他们的特征格式必须相同，在特征中会区分不同的买入情况
-                if frame_type == stf.FrameType.bottom.value:
-                    can_buy_frame_index_list.append(frame_index)
-                elif frame_type == stf.FrameType.bottom_delay.value:
-                    can_buy_frame_index_list.append(frame_index)
-                elif frame_type == stf.FrameType.go_up.value and self.get_frame_type(int(df_frame['pre_frame'].loc[frame_index])) == stf.FrameType.bottom.value:
+                if self._can_buy(frame_index):
                     can_buy_frame_index_list.append(frame_index)
             return can_buy_frame_index_list
+
+    def _can_buy(self, frame_index):
+        # 这是一个有效的帧
+        frame_type = self.get_frame_type(frame_index)
+        if frame_type == stf.FrameType.bottom.value:
+            return True
+        if frame_type == stf.FrameType.bottom_delay.value:
+            assert self.get_frame_type(int(self.df_frame['pre_frame'].loc[frame_index])) == stf.FrameType.bottom.value
+            return True
+        if frame_type == stf.FrameType.go_up.value:
+            assert self.get_frame_type(int(self.df_frame['pre_frame'].loc[frame_index])) == stf.FrameType.bottom.value
+            return True
+        return False
+
+    def _can_sell(self, frame_index):
+        # 这是一个有效的帧
+        frame_type = self.get_frame_type(frame_index)
+        if frame_type == stf.FrameType.top.value:
+            return True
+        if frame_type == stf.FrameType.top_delay.value:
+            assert self.get_frame_type(int(self.df_frame['pre_frame'].loc[frame_index])) == stf.FrameType.top.value
+            return True
+        if frame_type == stf.FrameType.go_down.value:
+            assert self.get_frame_type(int(self.df_frame['pre_frame'].loc[frame_index])) == stf.FrameType.top.value
+            return True
+        return False
 
 
     # 得到两关键帧之间的价差
